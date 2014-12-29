@@ -44,6 +44,7 @@ public:
 	virtual void UpdateDevices() = 0;
 	virtual bool IsRecording() = 0;
 	virtual void UpdateLagWarning() = 0;
+	virtual void OnBufferAdjusted(u32 buffer_size) = 0;
 };
 
 class Player

@@ -35,7 +35,8 @@ enum
 	NP_GUI_EVT_STOP_GAME,
 	NP_GUI_EVT_FAILURE,
 	NP_GUI_EVT_UPDATE_DEVICES,
-	NP_GUI_EVT_WARN_LAGGING
+	NP_GUI_EVT_WARN_LAGGING,
+	NP_GUI_EVT_UPDATE_BUFFER
 };
 
 class DeviceMapDiag;
@@ -70,6 +71,7 @@ public:
 	static const GameListItem* FindISO(const std::string& id);
 	void UpdateGameName();
 	virtual void UpdateLagWarning() override;
+	virtual void OnBufferAdjusted(u32 buffer_size) override;
 
 private:
 	DECLARE_EVENT_TABLE()
@@ -80,6 +82,7 @@ private:
 	void OnChoice(wxCommandEvent& event);
 	void OnThread(wxCommandEvent& event);
 	void OnAdjustBuffer(wxCommandEvent& event);
+	void OnAutoBuffer(wxCommandEvent& event);
 	void OnConfigPads(wxCommandEvent& event);
 	void OnShowDeviceMapDiag(wxShowEvent& event);
 	void OnDefocusName(wxFocusEvent& event);
@@ -92,6 +95,7 @@ private:
 	void DoUpdateLagWarning();
 	void LagWarningTimerHit(wxTimerEvent& event);
 	void UpdateDevicesOnGUI();
+	void UpdateBufferGui(int buffer_size);
 
 	wxTextCtrl*		m_name_text;
 	wxListBox*		m_player_lbox;
@@ -102,6 +106,8 @@ private:
 	wxChoice*		m_host_type_choice;
 	wxStaticText*   m_host_label;
 	wxButton*		m_host_copy_btn;
+	wxSpinCtrl*		m_padbuf_spin;
+	wxCheckBox*		m_auto_padbuf;
 	bool			m_host_copy_btn_is_retry;
 
 	std::string		m_selected_game;

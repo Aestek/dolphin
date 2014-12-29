@@ -43,6 +43,8 @@ NetPlayServer::NetPlayServer()
 	m_dialog = NULL;
 	m_highest_known_subframe = 0;
 	m_target_buffer_size = 20;
+	m_last_highest_ping = 0;
+	m_is_auto_buffer_enabled = false;
 	m_reservation_state = Inactive;
 	m_hash_subframe = -1;
 	m_hash = 0;
@@ -350,7 +352,7 @@ void NetPlayServer::OnDisconnect(PlayerId pid)
 }
 
 
-void NetPlayServer::AdjustPadBufferSize(unsigned int size)
+void NetPlayServer::AdjustPadBufferSize(u32 size)
 {
 	m_target_buffer_size = size;
 
@@ -359,7 +361,57 @@ void NetPlayServer::AdjustPadBufferSize(unsigned int size)
 	opacket.W((MessageId)NP_MSG_PAD_BUFFER);
 	opacket.W(m_target_buffer_size);
 	SendToClients(std::move(opacket));
+
+	if (m_dialog)
+		m_dialog->OnBufferAdjusted(size);
 }
+
+void NetPlayServer::AutoAjustPadBufferSize(bool force = false)
+{
+	if (!m_is_auto_buffer_enabled)
+		return;
+
+	u32 highest_ping = GetHighestPing();
+
+	/*
+	 * only attempt to change pad buffer size if ping has changed enough.
+	 * the higher the ping the higher the difference needs to be.
+	 */
+	int threshold = std::round((float)m_last_highest_ping * (3 / (float)m_auto_pad_buffer_size_factor));
+	threshold = std::max(threshold, 3);
+	int diff = (int)abs(m_last_highest_ping - highest_ping);
+
+	if (!force && diff <= threshold) {
+		printf("Notr thre: %d, diff: %d\n", threshold, diff);
+		return;
+	}
+
+	u32 new_buffer_size = std::max(
+		(int)round((float)highest_ping / (float)m_auto_pad_buffer_size_factor),
+		(int)m_auto_pad_buffer_size_min
+	);
+
+	printf(
+		"Changed buffer size to : %d (Threshold: %d, Last: %d, Highest: %d)\n",
+		new_buffer_size,
+		threshold,
+		m_last_highest_ping,
+		highest_ping
+	);
+
+	m_last_highest_ping = highest_ping;
+	AdjustPadBufferSize(new_buffer_size);
+}
+
+void NetPlayServer::ToggleAutoBufferSize(bool enabled)
+{
+	m_is_auto_buffer_enabled = enabled;
+
+	if (m_is_auto_buffer_enabled)
+		AutoAjustPadBufferSize(true);
+}
+
+
 
 void NetPlayServer::OnData(ENetEvent* event, Packet&& packet)
 {
@@ -557,6 +609,7 @@ void NetPlayServer::OnData(ENetEvent* event, Packet&& packet)
 			if (m_ping_key == ping_key)
 			{
 				player.ping = Common::Timer::GetTimeMs() - m_ping_key;
+				AutoAjustPadBufferSize();
 			}
 
 			Packet opacket;
@@ -741,6 +794,7 @@ void NetPlayServer::SendToClientsOnThread(Packet&& packet, const PlayerId skip_p
 void NetPlayServer::SetDialog(NetPlayUI* dialog)
 {
 	m_dialog = dialog;
+	m_dialog->OnBufferAdjusted(m_target_buffer_size);
 }
 
 void NetPlayServer::SetDesiredDeviceMapping(int classId, int index, PlayerId pid, int localIndex)
@@ -766,6 +820,22 @@ void NetPlayServer::SetDesiredDeviceMapping(int classId, int index, PlayerId pid
 	}
 	di.desired_mapping = new_mapping;
 	AddReservation();
+}
+
+int NetPlayServer::GetHighestPing()
+{
+	u32 highest_ping = 0;
+	for (size_t pid = 0; pid < m_players.size(); pid++)
+	{
+		Client& player = m_players[pid];
+		if (!player.connected)
+			continue;
+
+		if (player.ping != -1u)
+			highest_ping = std::max(highest_ping, player.ping);
+	}
+
+	return highest_ping;
 }
 
 void NetPlayServer::AddReservation()

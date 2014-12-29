@@ -35,6 +35,10 @@ public:
 
 	void AdjustPadBufferSize(unsigned int size) /* multiple threads */;
 
+	void AutoAjustPadBufferSize(bool force) /* calls AdjustPadBufferSize */;
+
+	void ToggleAutoBufferSize(bool enabled) /* calls AdjustPadBufferSize */;
+
 	void SetDialog(NetPlayUI* dialog);
 
 	virtual void OnENetEvent(ENetEvent*) override ON(NET);
@@ -99,6 +103,8 @@ public:
 	bool m_enable_memory_hash;
 
 private:
+	const u32 m_auto_pad_buffer_size_min    = 1;
+	const u32 m_auto_pad_buffer_size_factor = 12;
 
 	void SendToClients(Packet&& packet, const PlayerId skip_pid = -1) NOT_ON(NET);
 	void SendToClientsOnThread(Packet&& packet, const PlayerId skip_pid = -1) ON(NET);
@@ -106,15 +112,18 @@ private:
 	void OnDisconnect(PlayerId pid) ON(NET);
 	void UpdatePings() ON(NET);
 	bool IsSpectator(PlayerId pid);
+	int GetHighestPing();
 
 	std::vector<std::pair<std::string, std::string>> GetInterfaceListInternal();
 
-	NetSettings     m_settings;
-	bool            m_is_running ACCESS_ON(NET);
-	u64				m_ping_after ACCESS_ON(NET);
-	u32		m_ping_key;
-	u32		m_current_game;
-	u32				m_target_buffer_size;
+	NetSettings m_settings;
+	bool        m_is_running ACCESS_ON(NET);
+	u64         m_ping_after ACCESS_ON(NET);
+	u32         m_ping_key;
+	u32         m_current_game;
+	u32         m_target_buffer_size;
+	int         m_last_highest_ping;
+	bool        m_is_auto_buffer_enabled;
 
 
 	unsigned m_num_players ACCESS_ON(NET);
