@@ -134,6 +134,8 @@ private:
 	void Send(sf::Packet& packet);
 	void Disconnect();
 	bool Connect();
+	void DisplayPlayersPing();
+	u32 GetPlayersMaxPing() const;
 
 	PlayerId m_pid;
 	std::map<PlayerId, Player> m_players;
