@@ -35,7 +35,6 @@ private:
 	void OnQuit(wxCommandEvent& event);
 	void OnDirectTraversalChoice(wxCommandEvent& event);
 	void OnResetTraversal(wxCommandEvent& event);
-	void OnTraversalListenPortChanged(wxCommandEvent& event);
 	void OnKeyDown(wxKeyEvent& event);
 	void DispatchFocus();
 
@@ -52,8 +51,6 @@ private:
 	wxChoice*         m_direct_traversal;
 	wxStaticText*     m_traversal_lbl;
 	wxButton*         m_trav_reset_btn;
-	wxCheckBox*       m_traversal_listen_port_enabled;
-	wxSpinCtrl*       m_traversal_listen_port;
 	wxNotebook*       m_notebook;
 
 	wxListBox*  m_game_lbox;

@@ -390,11 +390,6 @@ void NetPlaySetupFrame::OnResetTraversal(wxCommandEvent& event)
 	m_traversal_lbl->SetLabelText(_("Traversal: ") + "stun.dolphin-emu.org:6262");
 }
 
-void NetPlaySetupFrame::OnTraversalListenPortChanged(wxCommandEvent& event)
-{
-	m_traversal_listen_port->Enable(m_traversal_listen_port_enabled->IsChecked());
-}
-
 void NetPlaySetupFrame::OnDirectTraversalChoice(wxCommandEvent& event)
 {
 	int sel = m_direct_traversal->GetSelection();
