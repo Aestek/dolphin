@@ -16,6 +16,9 @@
 #include "Core/HW/EXI_DeviceIPL.h"
 #include "Core/HW/Sram.h"
 #include "InputCommon/GCPadStatus.h"
+#include "Core/HW/EXI.h"
+#include "Core/HW/EXI_DeviceMemoryCard.h"
+#include "Core/HW/GCMemcardRaw.h"
 #if !defined(_WIN32)
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -653,6 +656,41 @@ unsigned int NetPlayServer::OnData(sf::Packet& packet, Client& player)
 		}
 	}
 	break;
+
+	case NP_MSG_GCMEMCARD_READ:
+	{
+		printf("NetPlayServer: got read req\n");
+		u32 addr;
+		s32 length;
+		packet >> addr;
+		packet >> length;
+
+		sf::Packet spac;
+		spac << (MessageId) NP_MSG_GCMEMCARD_READ_RESPONSE;
+		spac << length;
+
+		if (m_memcard == nullptr)
+		{
+			m_memcard = new MemoryCard(SConfig::GetInstance().m_strMemoryCardA, 0, 128);
+		}
+
+		u8* data = (u8*)malloc(length);
+		m_memcard->Read(addr, length, data);
+		printf("NetPlayServer: got from card\n");
+
+		for (s32 i = 0; i < length; ++i) {
+			printf("%02x", data[i]);
+			spac << data[i];
+		}
+
+		free(data);
+
+		Send(player.socket, spac);
+
+		printf("\nNetPlayServer: sent res\n");
+	}
+	break;
+
 	default:
 		PanicAlertT("Unknown message with id:%d received from player:%d Kicking player!", mid, player.pid);
 		// unknown message, kick the client

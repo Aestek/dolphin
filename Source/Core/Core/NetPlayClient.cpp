@@ -12,6 +12,7 @@
 #include "Core/ConfigManager.h"
 #include "Core/Movie.h"
 #include "Core/NetPlayClient.h"
+#include "Core/HW/EXI.h"
 #include "Core/HW/EXI_DeviceIPL.h"
 #include "Core/HW/SI.h"
 #include "Core/HW/SI_DeviceGCController.h"
@@ -19,11 +20,15 @@
 #include "Core/HW/WiimoteEmu/WiimoteEmu.h"
 #include "Core/HW/WiimoteReal/WiimoteReal.h"
 #include "Core/IPC_HLE/WII_IPC_HLE_Device_usb.h"
+#include "NetplayClientMemoryCard.h"
+#include "Core/HW/EXI_DeviceMemoryCard.h"
 
 static std::mutex crit_netplay_client;
 static NetPlayClient * netplay_client = nullptr;
 static std::array<int, 4> s_wiimote_sources_cache;
 NetSettings g_NetPlaySettings;
+
+NetPlayClient* g_current_netplay_client;
 
 // called from ---GUI--- thread
 NetPlayClient::~NetPlayClient()
@@ -60,11 +65,14 @@ NetPlayClient::~NetPlayClient()
 }
 
 // called from ---GUI--- thread
-NetPlayClient::NetPlayClient(const std::string& address, const u16 port, NetPlayUI* dialog, const std::string& name, bool traversal, const std::string& centralServer, u16 centralPort)
+NetPlayClient::NetPlayClient(const std::string& address, const u16 port, NetPlayUI* dialog, const std::string& name, bool traversal, const std::string& centralServer, u16 centralPort, bool is_hosting)
 	: m_dialog(dialog)
 	, m_player_name(name)
+	, m_is_hosting(is_hosting)
 {
 	ClearBuffers();
+
+	g_current_netplay_client = this;
 
 	if (!traversal)
 	{
@@ -391,6 +399,15 @@ unsigned int NetPlayClient::OnData(sf::Packet& packet)
 			packet >> tmp;
 			g_NetPlaySettings.m_EXIDevice[1] = (TEXIDevices)tmp;
 
+
+			if (!m_is_hosting)
+			{
+				g_NetPlaySettings.m_EXIDevice[0] = EXIDEVICE_MEMORYCARD_NETPLAY;
+			}
+			else
+				g_NetPlaySettings.m_EXIDevice[0] = EXIDEVICE_MEMORYCARDFOLDER;
+
+
 			u32 time_low, time_high;
 			packet >> time_low;
 			packet >> time_high;
@@ -476,6 +493,28 @@ unsigned int NetPlayClient::OnData(sf::Packet& packet)
 			memcpy(g_SRAM.p_SRAM, sram, sizeof(g_SRAM.p_SRAM));
 			g_SRAM_netplay_initialized = true;
 		}
+	}
+	break;
+
+	case NP_MSG_GCMEMCARD_READ_RESPONSE:
+	{
+		if (m_is_hosting)
+			break;
+		printf("NetPlayClient: got res\n");
+		s32 length;
+		packet >> length;
+
+		u8* data = (u8*)malloc(length);
+
+		for (s32 i = 0; i < length; ++i)
+		{
+			u8 b;
+			packet >> b;
+			data[i] = b;
+		}
+
+		m_gcmemcard_buffer = data;
+		printf("NetPlayClient: buffer set\n");
 	}
 	break;
 
@@ -898,12 +937,15 @@ bool NetPlayClient::GetNetPads(const u8 pad_nb, GCPadStatus* pad_status)
 	// to retrieve data for slot 1.
 	while (!m_pad_buffer[pad_nb].Pop(*pad_status))
 	{
+		// printf("NetPlayClient: waiting for pad buffer\n");
 		if (!m_is_running.load())
 			return false;
 
 		// TODO: use a condition instead of sleeping
 		Common::SleepCurrentThread(1);
 	}
+
+	printf("NetPlayClient: got dem pads\n");
 
 	if (Movie::IsRecordingInput())
 	{
@@ -1136,6 +1178,27 @@ void NetPlayClient::SendTimeBase()
 	*spac << netplay_client->m_timebase_frame++;
 
 	netplay_client->SendAsync(std::move(spac));
+}
+
+// called from ---CPU--- thread
+u8* NetPlayClient::ReadRemoteMemcard(u32 src_address, s32 length)
+{
+	m_gcmemcard_buffer = nullptr;
+	printf("NetPlayClient: ReadRemoteMemcard: %i\n", length);
+	auto spac = std::make_unique<sf::Packet>();
+	*spac << (MessageId)NP_MSG_GCMEMCARD_READ;
+	*spac << src_address;
+	*spac << length;
+	SendAsync(std::move(spac));
+
+	while (true)
+	{
+		printf("NetPlayClient: waiting for mem buffer\n");
+		if (m_gcmemcard_buffer != nullptr)
+			return m_gcmemcard_buffer;
+
+		Common::SleepCurrentThread(1);
+	}
 }
 
 // stuff hacked into dolphin

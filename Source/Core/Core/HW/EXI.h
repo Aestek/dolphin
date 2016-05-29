@@ -5,8 +5,8 @@
 #pragma once
 
 #include "Common/CommonTypes.h"
+#include "Core/HW/EXI_Channel.h"
 
-class CEXIChannel;
 class IEXIDevice;
 class PointerWrap;
 enum TEXIDevices : int;
@@ -16,6 +16,8 @@ enum
 {
 	MAX_EXI_CHANNELS = 3
 };
+
+static std::array<std::unique_ptr<CEXIChannel>, MAX_EXI_CHANNELS> g_Channels;
 
 namespace ExpansionInterface
 {

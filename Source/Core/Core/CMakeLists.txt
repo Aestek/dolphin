@@ -13,6 +13,7 @@ set(SRCS	ActionReplay.cpp
 			Movie.cpp
 			NetPlayClient.cpp
 			NetPlayServer.cpp
+			NetplayClientMemoryCard.cpp
 			PatchEngine.cpp
 			State.cpp
 			Boot/Boot_BS2Emu.cpp

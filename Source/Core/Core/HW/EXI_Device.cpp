@@ -17,6 +17,9 @@
 #include "Core/HW/EXI_DeviceMemoryCard.h"
 #include "Core/HW/EXI_DeviceMic.h"
 #include "Core/HW/Memmap.h"
+#include "Core/NetplayClientMemoryCard.h"
+
+extern NetPlayClient* g_current_netplay_client;
 
 // --- interface IEXIDevice ---
 void IEXIDevice::ImmWrite(u32 _uData, u32 _uSize)
@@ -106,6 +109,13 @@ std::unique_ptr<IEXIDevice> EXIDevice_Create(TEXIDevices device_type, const int 
 	{
 		bool gci_folder = (device_type == EXIDEVICE_MEMORYCARDFOLDER);
 		result = std::make_unique<CEXIMemoryCard>(channel_num, gci_folder);
+		break;
+	}
+	case EXIDEVICE_MEMORYCARD_NETPLAY:
+	{
+		auto memcard = std::make_unique<CEXIMemoryCard>(0, false);
+		memcard->memorycard = std::make_unique<NetplayClientMemoryCard>(g_current_netplay_client);
+		result = std::move(memcard);
 		break;
 	}
 	case EXIDEVICE_MASKROM:

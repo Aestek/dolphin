@@ -80,6 +80,14 @@ public:
 	{
 		return address <= (memory_card_size - 1);
 	}
+	int GetCardIndex()
+	{
+		return card_index;
+	}
+	u16 GetNintendoCardId()
+	{
+		return nintendo_card_id;
+	}
 
 protected:
 	int card_index;

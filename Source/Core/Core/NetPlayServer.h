@@ -15,6 +15,7 @@
 #include "Common/Timer.h"
 #include "Common/TraversalClient.h"
 #include "Core/NetPlayProto.h"
+#include "Core/HW/GCMemcard.h"
 
 class NetPlayUI;
 
@@ -120,6 +121,7 @@ private:
 	ENetHost*        m_server = nullptr;
 	TraversalClient* m_traversal_client = nullptr;
 	NetPlayUI*       m_dialog = nullptr;
+	MemoryCardBase*  m_memcard = nullptr;
 
 #ifdef USE_UPNP
 	static void mapPortThread(const u16 port);

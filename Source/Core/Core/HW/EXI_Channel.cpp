@@ -172,6 +172,8 @@ void CEXIChannel::AddDevice(std::unique_ptr<IEXIDevice> device, const int device
 {
 	_dbg_assert_(EXPANSIONINTERFACE, device_num < NUM_DEVICES);
 
+	if (m_pDevices == nullptr)
+	printf("LOL\n");
 	// Replace it with the new one
 	m_pDevices[device_num] = std::move(device);
 

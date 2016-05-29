@@ -26,8 +26,6 @@ namespace ExpansionInterface
 static int changeDevice;
 static int updateInterrupts;
 
-static std::array<std::unique_ptr<CEXIChannel>, MAX_EXI_CHANNELS> g_Channels;
-
 static void ChangeDeviceCallback(u64 userdata, s64 cyclesLate);
 static void UpdateInterruptsCallback(u64 userdata, s64 cycles_late);
 

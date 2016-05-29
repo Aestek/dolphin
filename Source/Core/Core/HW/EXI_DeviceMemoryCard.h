@@ -25,6 +25,7 @@ public:
 	IEXIDevice* FindDevice(TEXIDevices device_type, int customIndex = -1) override;
 	void DMARead(u32 _uAddr, u32 _uSize) override;
 	void DMAWrite(u32 _uAddr, u32 _uSize) override;
+	std::unique_ptr<MemoryCardBase> memorycard;
 
 private:
 	void SetupGciFolder(u16 sizeMb);
@@ -80,7 +81,7 @@ private:
 	unsigned int card_id;
 	unsigned int address;
 	u32 memory_card_size;
-	std::unique_ptr<MemoryCardBase> memorycard;
+
 
 protected:
 	void TransferByte(u8& byte) override;

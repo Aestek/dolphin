@@ -52,7 +52,7 @@ public:
 	void ThreadFunc();
 	void SendAsync(std::unique_ptr<sf::Packet> packet);
 
-	NetPlayClient(const std::string& address, const u16 port, NetPlayUI* dialog, const std::string& name, bool traversal, const std::string& centralServer, u16 centralPort);
+	NetPlayClient(const std::string& address, const u16 port, NetPlayUI* dialog, const std::string& name, bool traversal, const std::string& centralServer, u16 centralPort, bool is_hosting);
 	~NetPlayClient();
 
 	void GetPlayerList(std::string& list, std::vector<int>& pid_list);
@@ -82,6 +82,8 @@ public:
 
 	static void SendTimeBase();
 
+	u8* ReadRemoteMemcard(u32 src_address, s32 length);
+
 protected:
 	void ClearBuffers();
 
@@ -91,6 +93,7 @@ protected:
 		// lock order
 		std::recursive_mutex players;
 		std::recursive_mutex async_queue_write;
+		std::recursive_mutex gcmemcard_buffer;
 	} m_crit;
 
 	Common::FifoQueue<std::unique_ptr<sf::Packet>, false> m_async_queue;
@@ -152,9 +155,12 @@ private:
 	std::string m_player_name;
 	bool m_connecting = false;
 	TraversalClient* m_traversal_client = nullptr;
+	u8* m_gcmemcard_buffer;
+	bool m_is_hosting;
 
 	u32 m_timebase_frame = 0;
 };
 
 void NetPlay_Enable(NetPlayClient* const np);
 void NetPlay_Disable();
+
