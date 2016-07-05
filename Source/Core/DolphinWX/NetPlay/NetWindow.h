@@ -76,7 +76,6 @@ private:
   std::string FindCurrentGame();
   std::string FindGame(const std::string& game);
 
-
   void OnCopyIP(wxCommandEvent&);
   void OnChoice(wxCommandEvent& event);
   void UpdateHostLabel();

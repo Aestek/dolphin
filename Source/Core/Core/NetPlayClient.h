@@ -51,7 +51,6 @@ public:
   std::string revision;
   u32 ping;
   PlayerGameStatus game_status;
-
 };
 
 class NetPlayClient : public TraversalClientClient
