@@ -324,6 +324,7 @@ unsigned int NetPlayClient::OnData(sf::Packet& packet)
     // Trusting server for good map value (>=0 && <4)
     // add to pad buffer
     m_pad_buffer.at(map).Push(pad);
+    m_gc_pad_data_cv.notify_all();
   }
   break;
 
@@ -987,14 +988,18 @@ bool NetPlayClient::GetNetPads(const u8 pad_nb, GCPadStatus* pad_status)
 
   // Now, we either use the data pushed earlier, or wait for the
   // other clients to send it to us
-  while (!m_pad_buffer[pad_nb].Pop(*pad_status))
+  while (m_pad_buffer[pad_nb].Size() == 0)
   {
     if (!m_is_running.load())
+    {
       return false;
+    }
 
-    // TODO: use a condition instead of sleeping
-    Common::SleepCurrentThread(1);
+    std::unique_lock<std::mutex> lck(m_gc_pad_data_mutex);
+    m_gc_pad_data_cv.wait(lck);
   }
+
+  m_pad_buffer[pad_nb].Pop(*pad_status);
 
   if (Movie::IsRecordingInput())
   {
@@ -1074,15 +1079,13 @@ bool NetPlayClient::WiimoteUpdate(int _number, u8* data, const u8 size)
 // called from ---GUI--- thread and ---NETPLAY--- thread (client side)
 bool NetPlayClient::StopGame()
 {
-  if (!m_is_running.load())
-  {
-    PanicAlertT("Game isn't running!");
-    return false;
-  }
-
   m_dialog->AppendChat(" -- STOPPING GAME -- ");
 
   m_is_running.store(false);
+
+  // unblock GetNetPads()
+  m_gc_pad_data_cv.notify_all();
+
   NetPlay_Disable();
 
   // stop game
@@ -1096,6 +1099,10 @@ void NetPlayClient::Stop()
 {
   if (!m_is_running.load())
     return;
+
+  m_is_running.store(false);
+  // unblock GetNetPads()
+  m_gc_pad_data_cv.notify_all();
 
   // Tell the server to stop if we have a pad mapped in game.
   if (LocalPlayerHasControllerMapped())

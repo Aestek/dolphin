@@ -7,6 +7,7 @@
 #include <SFML/Network/Packet.hpp>
 #include <array>
 #include <atomic>
+#include <condition_variable>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -169,6 +170,8 @@ private:
   TraversalClient* m_traversal_client = nullptr;
   std::thread m_MD5_thread;
   bool m_should_compute_MD5 = false;
+  std::condition_variable m_gc_pad_data_cv;
+  std::mutex m_gc_pad_data_mutex;
 
   u32 m_timebase_frame = 0;
 };

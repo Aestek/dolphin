@@ -1126,8 +1126,9 @@ void CFrame::DoStop()
 
       // If exclusive fullscreen is not enabled then we can pause the emulation
       // before we've exited fullscreen. If not then we need to exit fullscreen first.
-      if (!RendererIsFullscreen() || !g_Config.ExclusiveFullscreenEnabled() ||
-          SConfig::GetInstance().bRenderToMain)
+      if (!NetPlayDialog::GetNetPlayClient() &&
+          (!RendererIsFullscreen() || !g_Config.ExclusiveFullscreenEnabled() ||
+           SConfig::GetInstance().bRenderToMain))
       {
         Core::SetState(Core::CORE_PAUSE);
       }
@@ -1139,7 +1140,7 @@ void CFrame::DoStop()
       HotkeyManagerEmu::Enable(false);
       int Ret = m_StopDlg.ShowModal();
       HotkeyManagerEmu::Enable(true);
-      if (Ret != wxID_YES)
+      if (Ret != wxID_YES && !NetPlayDialog::GetNetPlayClient())
       {
         Core::SetState(state);
         m_confirmStop = false;
