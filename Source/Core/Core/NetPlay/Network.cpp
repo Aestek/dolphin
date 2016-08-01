@@ -2,39 +2,66 @@
 // Licensed under GPLv2+
 // Refer to the license.txt file included.
 
+#include <Common/ENetUtil.h>
 #include <SFML/Network/Packet.hpp>
 #include <algorithm>
-#include <string>
 #include <thread>
 
 #include "Network.h"
-#include "Peer.h"
-#include "Router.h"
 
 namespace NetPlay
 {
-Network::Network(const u16 port)
+Network::Network()
 {
+  enet_initialize();
+  RunOnTick(std::bind(&Network::FlushTimedOutCallbacks, this));
+  RunOnTick(std::bind(&Network::SendQueuedPackets, this));
+}
+
+bool Network::Listen(const u16 port)
+{
+  if (m_is_listening)
+  {
+    return false;
+  }
+
   ENetAddress server_addr;
   server_addr.host = ENET_HOST_ANY;
   server_addr.port = port;
   m_host = enet_host_create(&server_addr, ENET_PEER_COUNT, ENET_CHANEL_COUNT, ENET_MAX_IN_BANDWIDTH,
                             ENET_MAX_OUT_BANDWIDTH);
+  Start();
+  m_is_listening = true;
+  return true;
+}
 
-  m_thread = std::thread([this]() {
-    m_running = true;
-    while (m_running)
-    {
-      MainLoop();
-    }
-  });
+void Network::Connect(const std::string& address, u16 port, u32 timeout,
+                      ConnectionCallback callback)
+{
+  ENetAddress addr;
+  enet_address_set_host(&addr, address.c_str());
+  addr.port = port;
 
-  RunOnTick(std::bind(&Network::FlushTimeoutCallbacks, this));
-};
+  ENetPeer* peer = enet_host_connect(m_host, &addr, ENET_CHANEL_COUNT, ENET_CONNECT_DATA);
+
+  if (!peer)
+  {
+    callback(nullptr);
+    return;
+  }
+
+  m_pending_connections.emplace(peer, Ephemeral<ConnectionCallback>(callback, timeout));
+  Start();
+}
+
+void Network::Stop()
+{
+  m_running = false;
+}
 
 void Network::Send(ENetPeer* socket, const sf::Packet& packet)
 {
-  Send(socket, packet, ++m_sequence_number);
+  Send(socket, packet, 0, 0);
 }
 
 void Network::Send(ENetPeer* socket, const sf::Packet& packet, PacketCallback callback)
@@ -45,41 +72,36 @@ void Network::Send(ENetPeer* socket, const sf::Packet& packet, PacketCallback ca
 void Network::Send(ENetPeer* socket, const sf::Packet& packet, PacketCallback callback,
                    u32 callback_timeout)
 {
-  u32 seq = ++m_sequence_number;
-  PacketCallbackEntry entry(callback, callback_timeout);
+  u16 seq = GetNextSequenceNumber();
+  Ephemeral<PacketCallback> entry(callback, callback_timeout);
   m_packet_callbacks.emplace(seq, entry);
-  Send(socket, packet, seq);
+  Send(socket, packet, seq, 0);
 }
 
-void Network::Send(ENetPeer* socket, const sf::Packet& packet, u32 reply_seq)
+void Network::Send(ENetPeer* socket, const sf::Packet& packet, u16 send_seq, u16 reply_seq)
 {
   sf::Packet sequenced_packet;
+  sequenced_packet << send_seq;
   sequenced_packet << reply_seq;
   sequenced_packet.append(packet.getData(), packet.getDataSize());
 
-  ENetPacket* enet_packet = enet_packet_create(
-      sequenced_packet.getData(), sequenced_packet.getDataSize(), ENET_PACKET_FLAG_RELIABLE);
-
-  enet_peer_send(socket, ENET_CHANEL, enet_packet);
+  if (m_thread.get_id() == std::this_thread::get_id())
+  {
+    SendPacket(socket, sequenced_packet);
+  }
+  else
+  {
+    m_queued_packets.emplace(socket, sequenced_packet);
+    ENetUtil::WakeupThread(m_host);
+  }
 }
 
-ENetPeer* Network::Connect(const std::string& address, u16 port, u32 timeout)
+void Network::SendPacket(ENetPeer* socket, const sf::Packet packet)
 {
-  ENetAddress addr;
-  enet_address_set_host(&addr, address.c_str());
-  addr.port = port;
+  ENetPacket* enet_packet =
+      enet_packet_create(packet.getData(), packet.getDataSize(), ENET_PACKET_FLAG_RELIABLE);
 
-  ENetPeer* peer = enet_host_connect(m_host, &addr, ENET_CHANEL_COUNT, ENET_CONNECT_DATA);
-
-  if (!peer)
-    return nullptr;
-
-  ENetEvent net_event;
-  int net = enet_host_service(m_host, &net_event, timeout);
-  if (net <= 0 || net_event.type != ENET_EVENT_TYPE_CONNECT)
-    return nullptr;
-
-  return peer;
+  enet_peer_send(socket, ENET_CHANEL, enet_packet);
 }
 
 void Network::Disconnect(ENetPeer* peer)
@@ -92,10 +114,27 @@ void Network::RunOnTick(TickFunction fn)
   m_tick_functions.push_back(fn);
 }
 
+void Network::Start()
+{
+  if (m_running)
+    return;
+
+  m_thread = std::thread([this]() {
+    m_running = true;
+    while (m_running)
+    {
+      MainLoop();
+    }
+  });
+}
+
 void Network::MainLoop()
 {
   ENetEvent net_event;
   int net = enet_host_service(m_host, &net_event, LOOP_TIMEOUT);
+
+  for (TickFunction fn : m_tick_functions)
+    fn();
 
   if (net <= 0)
     return;  // no event to process
@@ -117,9 +156,6 @@ void Network::MainLoop()
   default:
     break;
   }
-
-  for (TickFunction fn : m_tick_functions)
-    fn();
 }
 
 void Network::OnData(DataCallback callback)
@@ -127,12 +163,7 @@ void Network::OnData(DataCallback callback)
   m_data_callbacks.push_back(callback);
 }
 
-void Network::OnConnect(ConnectionCallback callback)
-{
-  m_connect_callbacks.push_back(callback);
-}
-
-void Network::OnDisconnect(ConnectionCallback callback)
+void Network::OnPeerDisconnect(ConnectionCallback callback)
 {
   m_disconnect_callbacks.push_back(callback);
 }
@@ -141,8 +172,12 @@ void Network::HandleConnect(const ENetEvent& net_event)
 {
   ENetPeer* socket = net_event.peer;
 
-  for (ConnectionCallback cb : m_connect_callbacks)
-    cb(socket);
+  auto entry = m_pending_connections.find(socket);
+
+  if (entry == m_pending_connections.end())
+    return;
+
+  entry->second.GetValue()(socket);
 }
 
 void Network::HandleData(const ENetEvent& net_event)
@@ -153,20 +188,24 @@ void Network::HandleData(const ENetEvent& net_event)
   sf::Packet packet;
   packet.append(data, data_length);
 
-  u32 reply_seq;
+  u16 send_seq;
+  packet >> send_seq;
+
+  u16 reply_seq;
   packet >> reply_seq;
+
   auto callback_entry = m_packet_callbacks.find(reply_seq);
 
   if (callback_entry != m_packet_callbacks.end())
   {
-    callback_entry->second(packet);
+    callback_entry->second.GetValue()(packet);
     m_packet_callbacks.erase(callback_entry);
   }
 
   for (DataCallback cb : m_data_callbacks)
   {
     cb(net_event.peer, packet,
-       [&](const sf::Packet& new_packet) { Send(net_event.peer, new_packet, reply_seq); });
+       [&](const sf::Packet& new_packet) { Send(net_event.peer, new_packet, 0, send_seq); });
   }
 }
 
@@ -180,7 +219,7 @@ void Network::HandleDisconnect(const ENetEvent& net_event)
   Disconnect(socket);
 }
 
-void Network::FlushTimeoutCallbacks()
+void Network::FlushTimedOutCallbacks()
 {
   for (auto entry = m_packet_callbacks.begin(); entry != m_packet_callbacks.end();)
   {
@@ -191,10 +230,38 @@ void Network::FlushTimeoutCallbacks()
     else
     {
       sf::Packet packet;
-      entry->second(packet);
+      entry->second.GetValue()(packet);
       m_packet_callbacks.erase(entry);
     }
   }
+
+  for (auto entry = m_pending_connections.begin(); entry != m_pending_connections.end();)
+  {
+    if (!entry->second.HasTimedOut())
+    {
+      ++entry;
+    }
+    else
+    {
+      entry->second.GetValue()(nullptr);
+      m_pending_connections.erase(entry);
+    }
+  }
+}
+
+void Network::SendQueuedPackets()
+{
+  while (m_queued_packets.size() > 0)
+  {
+    auto entry = m_queued_packets.front();
+    SendPacket(entry.first, entry.second);
+    m_queued_packets.pop();
+  }
+}
+
+u16 Network::GetNextSequenceNumber()
+{
+  return m_sequence_number = static_cast<u16>(++m_sequence_number % (1 << 16));
 }
 
 Network::~Network()

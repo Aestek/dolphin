@@ -151,9 +151,8 @@ set(SRCS	ActionReplay.cpp
 			IPC_HLE/WII_IPC_HLE_WiiMote.cpp
 			IPC_HLE/WiiMote_HID_Attr.cpp
 			NetPlay/Network.cpp
-			NetPlay/Peer.cpp
 			NetPlay/PingBasedRouter.cpp
-			NetPlay/MeshNetwork.cpp
+			NetPlay/NetPlay.cpp
 			PowerPC/MMU.cpp
 			PowerPC/PowerPC.cpp
 			PowerPC/PPCAnalyst.cpp
